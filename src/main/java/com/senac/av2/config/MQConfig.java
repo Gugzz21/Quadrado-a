@@ -1,47 +1,72 @@
 package com.senac.av2.config;
 
 import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.Binding; // [cite: 16]
-import org.springframework.amqp.core.DirectExchange; // [cite: 17]
-import org.springframework.beans.factory.annotation.Autowired; // [cite: 19]
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import jakarta.annotation.PostConstruct; // [cite: 21]
-
 
 @Configuration
 public class MQConfig {
-    @Autowired // [cite: 24]
-    private AmqpAdmin amqpAdmin; // [cite: 25]
 
-    private Queue queue; // [cite: 26]
+    // --- CONEXÃO (Lê do application.properties automaticamente) ---
 
-    // Método auxiliar para instanciar a fila
-    private Queue queue(String queueName){ // [cite: 27]
-        // durable: true, exclusive: false, autoDelete: false
-        return new Queue(queueName, true, false, false); // [cite: 29]
+    @Bean
+    public ConnectionFactory connectionFactory() {
+        return new CachingConnectionFactory(); // Vai ler host/port do properties
     }
 
-    // Método auxiliar para criar o Exchange
-    private DirectExchange createDirectExchange(){ // [cite: 30]
-        return new DirectExchange("area-quadrado"); // Adaptado de [cite: 31]
+    @Bean
+    public AmqpAdmin amqpAdmin(ConnectionFactory connectionFactory) {
+        return new RabbitAdmin(connectionFactory);
     }
 
-    @PostConstruct // [cite: 34]
-    private void Create(){ // [cite: 35]
-        // Define o nome da fila conforme sua solicitação
-        this.queue = new Queue("provac2GustavoDiniz"); // [cite: 36]
+    // --- OBRIGATÓRIO: CONVERSOR JSON ---
+    @Bean
+    public MessageConverter jsonMessageConverter() {
+        return new JacksonJsonMessageConverter();
+    }
 
-        // Cria o direct exchange
-        DirectExchange directExchange = createDirectExchange(); // [cite: 38]
+    // --- OBRIGATÓRIO: TEMPLATE USANDO JSON ---
+    @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+        RabbitTemplate template = new RabbitTemplate(connectionFactory);
+        // AQUI ESTÁ A CORREÇÃO: Força o uso do conversor JSON
+        template.setMessageConverter(jsonMessageConverter());
+        return template;
+    }
 
-        // Cria o binding (ligação) entre fila e exchange
-        Binding binding = new Binding(queue.getName(), Binding.DestinationType.QUEUE,
-                directExchange.getName(), queue.getName(), null); // [cite: 40]
+    // --- ESTRUTURA DA FILA ---
 
-        // Declara tudo no servidor RabbitMQ
-        amqpAdmin.declareQueue(queue); // [cite: 41]
-        amqpAdmin.declareExchange(directExchange); // [cite: 42]
-        amqpAdmin.declareBinding(binding); // [cite: 43]
+    private DirectExchange createDirectExchange(){
+        return new DirectExchange("area-quadrado");
+    }
+
+    @Bean
+    public CommandLineRunner inicializar(AmqpAdmin amqpAdmin) {
+        return args -> {
+            try {
+                // Cria a fila com o MESMO NOME da App 2
+                Queue queue = new Queue("provac2GustavoDiniz", true, false, false);
+                DirectExchange directExchange = createDirectExchange();
+                Binding binding = new Binding(queue.getName(), Binding.DestinationType.QUEUE,
+                        directExchange.getName(), queue.getName(), null);
+
+                amqpAdmin.declareQueue(queue);
+                amqpAdmin.declareExchange(directExchange);
+                amqpAdmin.declareBinding(binding);
+                System.out.println("App 1: Fila configurada!");
+            } catch (Exception e) {
+                System.out.println("App 1: Erro ao configurar fila (ignorando)...");
+            }
+        };
     }
 }
