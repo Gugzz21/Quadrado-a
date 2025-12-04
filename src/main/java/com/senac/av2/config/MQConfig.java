@@ -20,11 +20,6 @@ public class MQConfig {
     // --- CONEXÃO (Lê do application.properties automaticamente) ---
 
     @Bean
-    public ConnectionFactory connectionFactory() {
-        return new CachingConnectionFactory(); // Vai ler host/port do properties
-    }
-
-    @Bean
     public AmqpAdmin amqpAdmin(ConnectionFactory connectionFactory) {
         return new RabbitAdmin(connectionFactory);
     }
